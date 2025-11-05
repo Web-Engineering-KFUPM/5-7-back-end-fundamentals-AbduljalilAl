@@ -111,30 +111,67 @@ export default function App() {
   const [students, setStudents] = useState([]);
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   // GET: request data from the server
   useEffect(() => {
-    setLoading(true);
-    fetch(API)
-      .then((r) => r.json())
-      .then((data) => setStudents(data))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(API);
+        if (!res.ok) {
+          const msg = await res.text();
+          throw new Error(msg || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        if (!cancelled) setStudents(data);
+      } catch (err) {
+        if (!cancelled) setError('Failed to load students.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // POST: send data to the server
   const addStudent = async (e) => {
     e.preventDefault();
-    const res = await fetch(API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
-    });
-    if (res.ok) {
+
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Name is required.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed }),
+      });
+
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || `HTTP ${res.status}`);
+      }
+
       const created = await res.json();
       setStudents((prev) => [created, ...prev]);
       setName('');
-    } else {
-      alert('Failed to add student');
+    } catch (err) {
+      setError('Failed to add student.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -142,21 +179,25 @@ export default function App() {
     <main>
       <h1>Class Roster</h1>
 
-      <form onSubmit={addStudent}>
+      <form onSubmit={addStudent} style={{ display: 'flex', gap: '0.5rem' }}>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Student name"
           style={{ padding: '0.5rem', flex: 1 }}
+          disabled={loading}
         />
-        <button type="submit" >Add</button>
+        <button type="submit" disabled={loading || !name.trim()}>
+          Add
+        </button>
       </form>
 
+      {error && <p style={{ color: 'crimson' }}>{error}</p>}
       {loading && <p>Loading…</p>}
 
       <ul>
         {students.map((s) => (
-          <li key={s.id} >{s.name}</li>
+          <li key={s.id}>{s.name}</li>
         ))}
       </ul>
     </main>
